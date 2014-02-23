@@ -12,6 +12,7 @@
 #include "multi-lookup.h"
 
 FILE* outputfp = NULL;
+queue q;
 
 pthread_mutex_t queueMutex;
 pthread_mutex_t outputMutex;
@@ -19,52 +20,68 @@ sem_t full;
 sem_t empty;
 
 void* requester(void* fileName){
-	
-	inputfp = fopen(argv[i], "r");
+    
+    FILE* inputfp = NULL;
+	char errorstr[SBUFSIZE];
+    
+	inputfp = fopen(fileName, "r");
 	if(!inputfp){
-	    sprintf(errorstr, "Error Opening Input File: %s", argv[i]);
-	    perror(errorstr);
-	    break;
+    sprintf(errorstr, "Error Opening Input File: %s", argv[i]);
+    perror(errorstr);
 	}
 	
 	fclose(inputfp);	
-}
-
+}   
+    
 void* resolver(){
+    
+    char hostname[SBUFSIZE];
+    char firstipstr[INET6_ADDRSTRLEN];
+    
 	/* Read File and Process*/
 	while(fscanf(inputfp, INPUTFS, hostname) > 0){
+    /* Lookup hostname and get IP string */
+    if(dnslookup(hostname, firstipstr, sizeof(firstipstr))
+       == UTIL_FAILURE){
+    		fprintf(stderr, "dnslookup error: %s\n", hostname);
+    		strncpy(firstipstr, "", sizeof(firstipstr));
+    }
 
-	    /* Lookup hostname and get IP string */
-	    if(dnslookup(hostname, firstipstr, sizeof(firstipstr))
-	       == UTIL_FAILURE){
-			fprintf(stderr, "dnslookup error: %s\n", hostname);
-			strncpy(firstipstr, "", sizeof(firstipstr));
-	    }
-
-	    /* Write to Output File */
-	    fprintf(outputfp, "%s,%s\n", hostname, firstipstr);
+    /* Write to Output File */
+    fprintf(outputfp, "%s,%s\n", hostname, firstipstr);
 	}
 }
 
 int main(int argc, char* argv[]){
     
-    char hostname[SBUFSIZE];
-    char errorstr[SBUFSIZE];
-    char firstipstr[INET6_ADDRSTRLEN];
     int i;
+    /* Number of requester threads is number of input files */
+    int requesterThreadCount = argc - 2;
+    /* Number of resolver threads is the number of cores */
+    int resolverThreadCount = sysconf( _SC_NPROCESSORS_ONLN );
     
     /* Check Arguments */
     if(argc < MINARGS){
-		fprintf(stderr, "Not enough arguments: %d\n", (argc - 1));
-		fprintf(stderr, "Usage:\n %s %s\n", argv[0], USAGE);
-		return EXIT_FAILURE;
+  		fprintf(stderr, "Not enough arguments: %d\n", (argc - 1));
+  		fprintf(stderr, "Usage:\n %s %s\n", argv[0], USAGE);
+  		return EXIT_FAILURE;
     }
+    if(resolverThreadCount < MIN_RESOLVER_THREADS){
+      fprintf(stderr, "Not enough resolver threads: %d\n", 
+              resolverThreadCount);
+      fprintf(stderr, "Requires %d threads", MIN_RESOLVER_THREADS);
+      return EXIT_FAILURE:
+    }
+
+    /* Create thread pools */
+    pthread_t requesterThreads[requesterThreadCount];
+    pthread_t resolverThreads[resolverThreadCount];
 
     /* Open Output File */
     outputfp = fopen(argv[(argc-1)], "w");
 	    if(!outputfp){
-		perror("Error Opening Output File");
-		return EXIT_FAILURE;
+  		perror("Error Opening Output File");
+  		return EXIT_FAILURE;
     }
 
     /* Close Output File */
