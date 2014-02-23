@@ -26,20 +26,42 @@ void* requester(void* fileName){
     
   FILE* inputfp = NULL;
   char errorstr[SBUFSIZE];
+  char hostname[MAX_NAME_LENGTH];
+  char* payload;
     
   inputfp = fopen(fileName, "r");
   if(!inputfp){
     sprintf(errorstr, "Error Opening Input File: %s", argv[i]);
     perror(errorstr);
   }
+
+  while(fscanf(inputf, INPUTFS, hostname) > 0){
+    /* Acquire queue mutex lock, and empty semaphore lock */
+    pthread_mutex_lock(&queueMutex);
+    sem_wait(&empty);
+
+    /* Allocate memory for payload and copy to array */
+    payload = (char*)malloc(sizeof(hostname));
+    strcpy(payload, hostname);
+
+    /* Add new hostname to queue */
+    if(queue_push(&q, payload_in[i]) == QUEUE_FAILURE)
+      fprintf(stderr, "error: queue_push failed!");
+
+    /* Unlock queue, signal full */
+    pthread_mutex_unlock(&queueMutex);
+    sem_signal(&full);
+  }
   
+  /* Close input file and return */
   fclose(inputfp);  
+  return NULL
 }   
     
 void* resolver(){
     
-    char hostname[SBUFSIZE];
-    char firstipstr[INET6_ADDRSTRLEN];
+  char hostname[SBUFSIZE];
+  char firstipstr[INET6_ADDRSTRLEN];
     
   /* Read File and Process*/
   while(fscanf(inputfp, INPUTFS, hostname) > 0){
@@ -88,7 +110,7 @@ int main(int argc, char* argv[]){
 
     /* Initialize mutexes */
     if(pthread_mutex_init(&queueMutex, NULL)){
-      fprintf(stderr, "Error: pthreadMutex initialization failed\n");
+      fprintf(stderr, "Error: queueMutex initialization failed\n");
       return EXIT_FAILURE;
     }
     if(pthread_mutex_init(&outputMutex, NULL)){
@@ -97,11 +119,11 @@ int main(int argc, char* argv[]){
     }
     
     /* Initialize semaphores */
-    if(sem_init(&full, 0, QUEUE_SIZE)){
+    if(sem_init(&full, 0, 0)){
       fprintf(stderr, "Error: full semaphore initialization failed\n");
       return EXIT_FAILURE;
     }
-    if(sem_init(&empty, 0, 0)){
+    if(sem_init(&empty, 0, QUEUE_SIZE)){
       fprintf(stderr, "Error: full semaphore initialization failed\n");
       return EXIT_FAILURE;
     }
