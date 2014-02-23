@@ -20,6 +20,7 @@ int runningRequestors = 0;
 
 pthread_mutex_t queueMutex;
 pthread_mutex_t outputMutex;
+pthread_mutex_t requesterMutex;
 sem_t full;
 sem_t empty;
 
@@ -58,6 +59,11 @@ void* requester(void* fileName){
     sem_post(&full);
   }
   
+  /* Done processing file, so requester thread will terminate */
+  pthread_mutex_lock(&requesterMutex);
+  runningRequestors--;
+  pthread_mutex_unlock(&requesterMutex);
+
   /* Close input file and return */
   fclose(inputfp);  
   return NULL
@@ -96,7 +102,17 @@ void* resolver(){
 
     /* Free memory used by hostname */
     free(hostname);
+
+    /* Check to see if we need to keep going */
+    pthread_mutex_lock(&queueMutex);
+    pthread_mutex_lock(&requesterMutex);
+    if(queue_is_empty(&queue) || !runningRequestors)
+      break;
+    pthread_mutex_unlock(&queueMutex);
+    pthread_mutex_unlock(&requesterMutex);
   }
+
+  return NULL;
 }
 
 int main(int argc, char* argv[]){
@@ -140,6 +156,10 @@ int main(int argc, char* argv[]){
     }
     if(pthread_mutex_init(&outputMutex, NULL)){
       fprintf(stderr, "Error: outputMutex initialization failed\n");
+      return EXIT_FAILURE;
+    }
+    if(pthread_mutex_init(&requesterMutex, NULL)){
+      fprintf(stderr, "Error: requesterMutex initialization failed\n");
       return EXIT_FAILURE;
     }
     
