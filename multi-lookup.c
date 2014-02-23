@@ -75,6 +75,13 @@ int main(int argc, char* argv[]){
       return EXIT_FAILURE:
     }
 
+    /* Open Output File */
+    outputfp = fopen(argv[(argc-1)], "w");
+      if(!outputfp){
+        perror("Error Opening Output File");
+        return EXIT_FAILURE;
+    }
+
     /* Create the queue, based on QUEUE_SIZE defined in header file */
     if(queue_init(&queue, QUEUE_SIZE) == QUEUE_FAILURE)
       fprintf(stderr,"Error: queue_init failed!\n");
@@ -117,15 +124,21 @@ int main(int argc, char* argv[]){
       }
     }
 
-    /* Open Output File */
-    outputfp = fopen(argv[(argc-1)], "w");
-      if(!outputfp){
-        perror("Error Opening Output File");
-        return EXIT_FAILURE;
-    }
-
+    /* Wait for requester and resolver threads to both finish */
+    for(i = 0; i < requesterThreadCount; i++)
+      pthread_join(requesterThreads[i], NULL);
+    for(i = 0; i < resolverThreadCount; i++)
+      pthread_join(resolverThreads[i], NULL);
+    
     /* Close Output File */
     fclose(outputfp);
+
+    /* Cleanup */
+    pthread_mutex_destroy(&queueMutex);
+    pthread_mutex_destroy(&outputMutex);
+    sem_destroy(&full);
+    sem_destroy(&empty);
+    queue_cleanup(&queue);
 
     return EXIT_SUCCESS;
 }
