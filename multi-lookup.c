@@ -33,11 +33,11 @@ void* requester(void* fileName){
     
   inputfp = fopen(fileName, "r");
   if(!inputfp){
-    sprintf(errorstr, "Error Opening Input File: %s", argv[i]);
+    sprintf(errorstr, "Error Opening Input File: %s", fileName);
     perror(errorstr);
   }
 
-  while(fscanf(inputf, INPUTFS, hostname) > 0){
+  while(fscanf(inputfp, INPUTFS, hostname) > 0){
     /* Acquire queue mutex lock, and empty semaphore lock */
     pthread_mutex_lock(&queueMutex);
     sem_wait(&empty);
@@ -47,11 +47,11 @@ void* requester(void* fileName){
     strcpy(payload, hostname);
 
     /* Sleep for a random length of time if queue is full */
-    while(queue_is_full(&queue))
-      usleep(rand() % 100)
+    while(queue_is_full(&q))
+      usleep(rand() % 100);
 
     /* Add new hostname to queue */
-    if(queue_push(&q, payload_in[i]) == QUEUE_FAILURE)
+    if(queue_push(&q, (void*)payload) == QUEUE_FAILURE)
       fprintf(stderr, "Error: Queue push failed\n");
 
     /* Unlock queue, signal full */
@@ -66,7 +66,7 @@ void* requester(void* fileName){
 
   /* Close input file and return */
   fclose(inputfp);  
-  return NULL
+  return NULL;
 }   
     
 void* resolver(){
@@ -74,13 +74,13 @@ void* resolver(){
   char* hostname;
   char firstipstr[INET6_ADDRSTRLEN];
 
-  while(TRUE){
+  while(1){
     /* Acquire queue lock, decrement full */
     pthread_mutex_lock(&queueMutex);
     sem_wait(&full);
 
     /* Read a name from the queue */
-    hostname = (char*)queue_pop(&queue)
+    hostname = (char*)queue_pop(&q);
 
     /* Don't need queue anymore */
     pthread_mutex_unlock(&queueMutex);
@@ -106,7 +106,7 @@ void* resolver(){
     /* Check to see if we need to keep going */
     pthread_mutex_lock(&queueMutex);
     pthread_mutex_lock(&requesterMutex);
-    if(queue_is_empty(&queue) || !runningRequestors)
+    if(queue_is_empty(&q) || !runningRequestors)
       break;
     pthread_mutex_unlock(&queueMutex);
     pthread_mutex_unlock(&requesterMutex);
@@ -121,7 +121,7 @@ int main(int argc, char* argv[]){
     /* Number of requester threads is number of input files */
     int requesterThreadCount = argc - 2;
     /* Number of resolver threads is the number of cores */
-    int resolverThreadCount = sysconf(_SC_NPROCESSORS_ONLN);
+    int resolverThreadCount = 10; //sysconf( _SC_NPROCESSORS_ONLN );
     /* Set number of running requesters to the numbers of input files */
     runningRequestors = requesterThreadCount;
     
@@ -135,7 +135,7 @@ int main(int argc, char* argv[]){
       fprintf(stderr, "Not enough resolver threads: %d\n", 
               resolverThreadCount);
       fprintf(stderr, "Requires %d threads", MIN_RESOLVER_THREADS);
-      return EXIT_FAILURE:
+      return EXIT_FAILURE;
     }
 
     /* Open Output File */
@@ -146,7 +146,7 @@ int main(int argc, char* argv[]){
     }
 
     /* Create the queue, based on QUEUE_SIZE defined in header file */
-    if(queue_init(&queue, QUEUE_SIZE) == QUEUE_FAILURE)
+    if(queue_init(&q, QUEUE_SIZE) == QUEUE_FAILURE)
       fprintf(stderr,"Error: queue_init failed!\n");
 
     /* Initialize mutexes */
@@ -179,7 +179,7 @@ int main(int argc, char* argv[]){
     
     /* Create threads */
     for(i = 0; i < requesterThreadCount; i++){
-      if(pthread_create(&requesterThreads[i], NULL, requester, argv[i + 1]){
+      if(pthread_create(&requesterThreads[i], NULL, requester, argv[i + 1])){
         fprintf(stderr, "Error: Creating requester threads failed\n");
         return EXIT_FAILURE;
       }
@@ -205,7 +205,7 @@ int main(int argc, char* argv[]){
     pthread_mutex_destroy(&outputMutex);
     sem_destroy(&full);
     sem_destroy(&empty);
-    queue_cleanup(&queue);
+    queue_cleanup(&q);
 
     return EXIT_SUCCESS;
 }
