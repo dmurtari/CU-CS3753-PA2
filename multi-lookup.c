@@ -11,11 +11,43 @@
 
 #include "multi-lookup.h"
 
-int main(int argc, char* argv[]){
+FILE* outputfp = NULL;
 
-    /* Local Vars */
-    FILE* inputfp = NULL;
-    FILE* outputfp = NULL;
+pthread_mutex_t queueMutex;
+pthread_mutex_t outputMutex;
+sem_t full;
+sem_t empty;
+
+void* requester(void* fileName){
+	
+	inputfp = fopen(argv[i], "r");
+	if(!inputfp){
+	    sprintf(errorstr, "Error Opening Input File: %s", argv[i]);
+	    perror(errorstr);
+	    break;
+	}
+	
+	fclose(inputfp);	
+}
+
+void* resolver(){
+	/* Read File and Process*/
+	while(fscanf(inputfp, INPUTFS, hostname) > 0){
+
+	    /* Lookup hostname and get IP string */
+	    if(dnslookup(hostname, firstipstr, sizeof(firstipstr))
+	       == UTIL_FAILURE){
+			fprintf(stderr, "dnslookup error: %s\n", hostname);
+			strncpy(firstipstr, "", sizeof(firstipstr));
+	    }
+
+	    /* Write to Output File */
+	    fprintf(outputfp, "%s,%s\n", hostname, firstipstr);
+	}
+}
+
+int main(int argc, char* argv[]){
+    
     char hostname[SBUFSIZE];
     char errorstr[SBUFSIZE];
     char firstipstr[INET6_ADDRSTRLEN];
@@ -23,45 +55,16 @@ int main(int argc, char* argv[]){
     
     /* Check Arguments */
     if(argc < MINARGS){
-	fprintf(stderr, "Not enough arguments: %d\n", (argc - 1));
-	fprintf(stderr, "Usage:\n %s %s\n", argv[0], USAGE);
-	return EXIT_FAILURE;
+		fprintf(stderr, "Not enough arguments: %d\n", (argc - 1));
+		fprintf(stderr, "Usage:\n %s %s\n", argv[0], USAGE);
+		return EXIT_FAILURE;
     }
 
     /* Open Output File */
     outputfp = fopen(argv[(argc-1)], "w");
-    if(!outputfp){
-	perror("Error Opening Output File");
-	return EXIT_FAILURE;
-    }
-
-    /* Loop Through Input Files */
-    for(i=1; i<(argc-1); i++){
-	
-	/* Open Input File */
-	inputfp = fopen(argv[i], "r");
-	if(!inputfp){
-	    sprintf(errorstr, "Error Opening Input File: %s", argv[i]);
-	    perror(errorstr);
-	    break;
-	}	
-
-	/* Read File and Process*/
-	while(fscanf(inputfp, INPUTFS, hostname) > 0){
-	
-	    /* Lookup hostname and get IP string */
-	    if(dnslookup(hostname, firstipstr, sizeof(firstipstr))
-	       == UTIL_FAILURE){
-		fprintf(stderr, "dnslookup error: %s\n", hostname);
-		strncpy(firstipstr, "", sizeof(firstipstr));
-	    }
-	
-	    /* Write to Output File */
-	    fprintf(outputfp, "%s,%s\n", hostname, firstipstr);
-	}
-
-	/* Close Input File */
-	fclose(inputfp);
+	    if(!outputfp){
+		perror("Error Opening Output File");
+		return EXIT_FAILURE;
     }
 
     /* Close Output File */
