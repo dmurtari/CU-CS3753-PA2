@@ -75,10 +75,6 @@ int main(int argc, char* argv[]){
       return EXIT_FAILURE:
     }
 
-    /* Create thread pools */
-    pthread_t requesterThreads[requesterThreadCount];
-    pthread_t resolverThreads[resolverThreadCount];
-
     /* Create the queue, based on QUEUE_SIZE defined in header file */
     if(queue_init(&queue, QUEUE_SIZE) == QUEUE_FAILURE)
       fprintf(stderr,"Error: queue_init failed!\n");
@@ -102,7 +98,25 @@ int main(int argc, char* argv[]){
       fprintf(stderr, "Error: full semaphore initialization failed\n");
       return EXIT_FAILURE;
     }
+
+    /* Create thread pools */
+    pthread_t requesterThreads[requesterThreadCount];
+    pthread_t resolverThreads[resolverThreadCount];
     
+    /* Create threads */
+    for(i = 0; i < requesterThreadCount; i++){
+      if(pthread_create(&requesterThreads[i], NULL, requester, argv[i + 1]){
+        fprintf(stderr, "Error: Creating requester threads failed\n");
+        return EXIT_FAILURE;
+      }
+    }
+    for(i = 0; i < resolverThreadCount; i++){
+      if(pthread_create(&resolverThreads[i], NULL, resolver, NULL)){
+        fprintf(stderr, "Error: Creating resolver threads failed\n");
+        return EXIT_FAILURE;
+      }
+    }
+
     /* Open Output File */
     outputfp = fopen(argv[(argc-1)], "w");
       if(!outputfp){
