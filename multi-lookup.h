@@ -1,5 +1,5 @@
-#ifndef MULTI-LOOKUP_H
-#define MULTI-LOOKUP_H
+#ifndef MULTILOOKUP_H
+#define MULTILOOKUP_H
 
 #include <stdlib.h>
 #include <stdio.h>
