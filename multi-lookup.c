@@ -16,6 +16,7 @@
 
 FILE* outputfp = NULL;
 queue q;
+int runningRequestors = 0;
 
 pthread_mutex_t queueMutex;
 pthread_mutex_t outputMutex;
@@ -44,13 +45,17 @@ void* requester(void* fileName){
     payload = (char*)malloc(sizeof(hostname));
     strcpy(payload, hostname);
 
+    /* Sleep for a random length of time if queue is full */
+    while(queue_is_full(&queue))
+      usleep(rand() % 100)
+
     /* Add new hostname to queue */
     if(queue_push(&q, payload_in[i]) == QUEUE_FAILURE)
-      fprintf(stderr, "error: queue_push failed!");
+      fprintf(stderr, "Error: Queue push failed\n");
 
     /* Unlock queue, signal full */
     pthread_mutex_unlock(&queueMutex);
-    sem_signal(&full);
+    sem_post(&full);
   }
   
   /* Close input file and return */
@@ -60,19 +65,37 @@ void* requester(void* fileName){
     
 void* resolver(){
     
-  char hostname[SBUFSIZE];
+  char* hostname;
   char firstipstr[INET6_ADDRSTRLEN];
-    
-  /* Read File and Process*/
-  while(fscanf(inputfp, INPUTFS, hostname) > 0){
-    /* Lookup hostname and get IP string */
+
+  while(TRUE){
+    /* Acquire queue lock, decrement full */
+    pthread_mutex_lock(&queueMutex);
+    sem_wait(&full);
+
+    /* Read a name from the queue */
+    hostname = (char*)queue_pop(&queue)
+
+    /* Don't need queue anymore */
+    pthread_mutex_unlock(&queueMutex);
+
+    /* Lookup hostname */
     if(dnslookup(hostname, firstipstr, sizeof(firstipstr)) == UTIL_FAILURE){
-        fprintf(stderr, "dnslookup error: %s\n", hostname);
-        strncpy(firstipstr, "", sizeof(firstipstr));
+      fprintf(stderr, "dnslookup error: %s\n", hostname);
+      strncpy(firstipstr, "", sizeof(firstipstr));
     }
 
-    /* Write to Output File */
+    /* Acquire mutex lock for output file */
+    pthread_mutex_lock(&outputMutex);
+
+    /* Write the hostname and ip to output file */
     fprintf(outputfp, "%s,%s\n", hostname, firstipstr);
+
+    /* Release output file mutex */
+    pthread_mutex_unlock(&outputMutex);
+
+    /* Free memory used by hostname */
+    free(hostname);
   }
 }
 
@@ -83,6 +106,8 @@ int main(int argc, char* argv[]){
     int requesterThreadCount = argc - 2;
     /* Number of resolver threads is the number of cores */
     int resolverThreadCount = sysconf(_SC_NPROCESSORS_ONLN);
+    /* Set number of running requesters to the numbers of input files */
+    runningRequestors = requesterThreadCount;
     
     /* Check Arguments */
     if(argc < MINARGS){
