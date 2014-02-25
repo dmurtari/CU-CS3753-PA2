@@ -3,7 +3,7 @@
  * Author: Domenic Murtari
  * Project: CSCI 3753 Programming Assignment 2
  * Create Date: 2/23/2014
- * Modify Date: 2/23/2014
+ * Modify Date: 2/25/2014
  * Description: Contains a multi-thread implementation of the DNS Lookup system
  * 
  * References: 
@@ -16,7 +16,7 @@
 
 FILE* outputfp;
 queue q;
-int runningRequestors = 0;
+int runningRequesters = 0;
 
 pthread_mutex_t queueMutex;
 pthread_mutex_t outputMutex;
@@ -29,7 +29,6 @@ void* requester(void* fileName){
   char hostname[MAX_NAME_LENGTH];
   char* payload;
     
-  printf("In the requester\n");
   inputfp = fopen(fileName, "r");
   if(!inputfp){
     sprintf(errorstr, "Error Opening Input File: %s", fileName);
@@ -49,7 +48,7 @@ void* requester(void* fileName){
     while(queue_is_full(&q)){
       pthread_mutex_unlock(&queueMutex);
       usleep(rand() % 100);
-      pthread_mutex_unlock(&queueMutex);
+      pthread_mutex_lock(&queueMutex);
     }
 
     /* Add new hostname to queue */
@@ -62,7 +61,7 @@ void* requester(void* fileName){
   
   /* Done processing file, so requester thread will terminate */
   pthread_mutex_lock(&requesterMutex);
-  runningRequestors--;
+  runningRequesters--;
   pthread_mutex_unlock(&requesterMutex);
 
   printf("Requester finished\n");
@@ -76,25 +75,24 @@ void* resolver(){
   char* hostname;
   char firstipstr[INET6_ADDRSTRLEN];
 
-  printf("In the resolver\n");
+  while(1){
 
-  printf("Acquiring queue mutex\n");
-  pthread_mutex_lock(&queueMutex);
-  printf("Acquiring requester mutex\n");
-  pthread_mutex_lock(&requesterMutex);
-  while(!queue_is_empty(&q) ){//|| runningRequestors){
-  printf("In while loop\n");
-    if(queue_is_empty(&q))
+    /* Check to see if queue is empty and that there are no more requesters
+       waiting to complete */
+    pthread_mutex_lock(&queueMutex);
+    pthread_mutex_lock(&requesterMutex);
+    if(queue_is_empty(&q) && (runningRequesters == 0)){
+      pthread_mutex_unlock(&queueMutex);
+      pthread_mutex_unlock(&requesterMutex);
       break;
-    
-    /* Read a name from the queue */
-    hostname = (char*)queue_pop(&q);
-    printf("Going through queue\n");
-    printf("Hostname is: %s \n", (void*)hostname);
+    }
 
     /* Don't need to check if queue is full or if requester is running */
     pthread_mutex_unlock(&queueMutex);
     pthread_mutex_unlock(&requesterMutex);
+    
+    /* Read a name from the queue */
+    hostname = (char*)queue_pop(&q);
 
     /* Lookup hostname */
     if(dnslookup(hostname, firstipstr, sizeof(firstipstr)) == UTIL_FAILURE){
@@ -113,11 +111,8 @@ void* resolver(){
 
     /* Free memory used by hostname */
     free(hostname);
-    pthread_mutex_lock(&queueMutex);
-    pthread_mutex_lock(&requesterMutex);
+    printf("Done unlocking, Running requesters is: %d \n", runningRequesters );
   }
-  pthread_mutex_unlock(&queueMutex);
-  pthread_mutex_unlock(&requesterMutex);
 
   printf("Resolver finished\n");
   return NULL;
@@ -131,7 +126,8 @@ int main(int argc, char* argv[]){
   /* Number of resolver threads is the number of cores */
   int resolverThreadCount = 10; //sysconf( _SC_NPROCESSORS_ONLN );
   /* Set number of running requesters to the numbers of input files */
-  runningRequestors = requesterThreadCount;
+  runningRequesters = requesterThreadCount;
+  
   
   printf("Starting program\n");
   /* Check Arguments */
