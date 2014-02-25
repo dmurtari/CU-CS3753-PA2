@@ -22,12 +22,14 @@ pthread_mutex_t queueMutex;
 pthread_mutex_t outputMutex;
 pthread_mutex_t requesterMutex;
 
+
 void* requester(void* fileName){
     
   FILE* inputfp;
   char errorstr[SBUFSIZE];
   char hostname[MAX_NAME_LENGTH];
   char* payload;
+  struct timespec reqtime;
     
   inputfp = fopen(fileName, "r");
   if(!inputfp){
@@ -43,11 +45,11 @@ void* requester(void* fileName){
     payload = (char*)malloc(sizeof(hostname));
     strcpy(payload, hostname);
 
-    printf("Inserting %s into queue\n", hostname);
     /* Sleep for a random length of time if queue is full */
     while(queue_is_full(&q)){
       pthread_mutex_unlock(&queueMutex);
-      usleep(rand() % 100);
+      reqtime.tv_nsec = rand() % 100;
+      nanosleep(&reqtime, NULL);
       pthread_mutex_lock(&queueMutex);
     }
 
@@ -64,12 +66,12 @@ void* requester(void* fileName){
   runningRequesters--;
   pthread_mutex_unlock(&requesterMutex);
 
-  printf("Requester finished\n");
   /* Close input file and return */
   fclose(inputfp);  
   return NULL;
 }   
     
+
 void* resolver(){
     
   char* hostname;
@@ -87,6 +89,7 @@ void* resolver(){
       break;
     }
 
+    /* If queue is empty, no need to try and look anything up so continue */
     if(queue_is_empty(&q)){
       pthread_mutex_unlock(&queueMutex);
       pthread_mutex_unlock(&requesterMutex);
@@ -117,12 +120,11 @@ void* resolver(){
 
     /* Free memory used by hostname */
     free(hostname);
-    printf("Done unlocking, Running requesters is: %d \n", runningRequesters );
   }
 
-  printf("Resolver finished\n");
   return NULL;
 }
+
 
 int main(int argc, char* argv[]){
     
@@ -135,7 +137,6 @@ int main(int argc, char* argv[]){
   runningRequesters = requesterThreadCount;
   
   
-  printf("Starting program\n");
   /* Check Arguments */
   if(argc < MINARGS){
     fprintf(stderr, "Not enough arguments: %d\n", (argc - 1));
@@ -178,7 +179,6 @@ int main(int argc, char* argv[]){
   pthread_t requesterThreads[requesterThreadCount];
   pthread_t resolverThreads[resolverThreadCount];
   
-  printf("Creating threads\n");
   /* Create threads */
   for(i = 0; i < requesterThreadCount; i++){
     if(pthread_create(&requesterThreads[i], NULL, requester, argv[i + 1])){
@@ -193,7 +193,6 @@ int main(int argc, char* argv[]){
     }
   }
 
-  printf("Waiting for threads to finish\n");
   /* Wait for requester and resolver threads to both finish */
   for(i = 0; i < requesterThreadCount; i++)
     pthread_join(requesterThreads[i], NULL);
