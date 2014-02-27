@@ -151,7 +151,7 @@ int main(int argc, char* argv[]){
   /* Number of requester threads is number of input files */
   int requesterThreadCount = argc - 2;
   /* Number of resolver threads is the number of cores */
-  int resolverThreadCount = 2; //sysconf( _SC_NPROCESSORS_ONLN );
+  int resolverThreadCount = sysconf(_SC_NPROCESSORS_ONLN) * 2;
   /* Set number of running requesters to the numbers of input files */
   runningRequesters = requesterThreadCount;
   

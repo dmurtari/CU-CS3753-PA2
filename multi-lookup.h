@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <unistd.h>
 
 #include "util.h"
 #include "queue.h"
