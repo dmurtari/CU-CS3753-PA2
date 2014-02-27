@@ -48,6 +48,7 @@ void* requester(void* fileName){
     /* Sleep for a random length of time if queue is full */
     while(queue_is_full(&q)){
       pthread_mutex_unlock(&queueMutex);
+      reqtime.tv_sec = 0;
       reqtime.tv_nsec = rand() % 100;
       nanosleep(&reqtime, NULL);
       pthread_mutex_lock(&queueMutex);
