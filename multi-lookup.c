@@ -8,7 +8,6 @@
  * 
  * References: 
  *  http://jlmedina123.wordpress.com/2013/05/03/pthreads-with-mutex-and-semaphores/
- *  http://stackoverflow.com/questions/150355/programmatically-find-the-number-of-cores-on-a-machine
  * 
  */
 
@@ -100,8 +99,6 @@ void* resolver(){
    * queue, try to read items from the queue and resolve the hostnames */
   while(1){
 
-
-    
     /* Check to see if queue is empty and that there are no more requesters
      * waiting to complete. Need to control access to the queue and the count
      * of running requesters to do this. If the queue is empty and no requesters
@@ -237,6 +234,8 @@ int main(int argc, char* argv[]){
   pthread_mutex_destroy(&queueMutex);
   pthread_mutex_destroy(&outputMutex);
   pthread_mutex_destroy(&requesterMutex);
+  sem_destroy(&full);
+  sem_destroy(&empty);
   queue_cleanup(&q);
 
   return EXIT_SUCCESS;
