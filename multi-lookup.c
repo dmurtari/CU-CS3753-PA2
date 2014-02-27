@@ -48,6 +48,7 @@ void* requester(void* fileName){
     /* Sleep for a random length of time if queue is full */
     while(queue_is_full(&q)){
       pthread_mutex_unlock(&queueMutex);
+      reqtime.tv_sec = 0;
       reqtime.tv_nsec = rand() % 100;
       nanosleep(&reqtime, NULL);
       pthread_mutex_lock(&queueMutex);
@@ -89,16 +90,17 @@ void* resolver(){
       break;
     }
 
+    /* Done checking if requester is running */
+    pthread_mutex_unlock(&requesterMutex);
+
     /* If queue is empty, no need to try and look anything up so continue */
     if(queue_is_empty(&q)){
       pthread_mutex_unlock(&queueMutex);
-      pthread_mutex_unlock(&requesterMutex);
       continue;
     }
 
-    /* Don't need to check if queue is full or if requester is running */
+    /* Don't need to check if queue is full */
     pthread_mutex_unlock(&queueMutex);
-    pthread_mutex_unlock(&requesterMutex);
     
     /* Read a name from the queue */
     hostname = (char*)queue_pop(&q);
