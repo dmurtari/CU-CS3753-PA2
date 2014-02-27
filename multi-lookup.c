@@ -38,7 +38,6 @@ void* requester(void* fileName){
   char errorstr[SBUFSIZE];
   char hostname[MAX_NAME_LENGTH];
   char* payload;
-  int value;
   struct timespec reqtime;
   
   /* Open the input file for import */  
@@ -51,44 +50,30 @@ void* requester(void* fileName){
   /* Go through the input file, inserting hostnames into the queue */
   while(fscanf(inputfp, INPUTFS, hostname) > 0){
     
-    /* Acquire queue mutex lock so other requestors can't insert at same time 
-     * and resolvers can't try to read from the queue */
-    pthread_mutex_lock(&queueMutex);
-
-
-/* Sleep for a random length of time if queue is full */
-    while(queue_is_full(&q)){
-      pthread_mutex_unlock(&queueMutex);
-      reqtime.tv_sec = 0;
-      reqtime.tv_nsec = rand() % 100;
-      nanosleep(&reqtime, NULL);
-      pthread_mutex_lock(&queueMutex);
-    }
-    
-    printf("Waiting on empty in requester\n");
-    sem_getvalue(&empty, &value); 
-    printf("Empty is %d\n", value);
+    /* Wait until there is an empty slot in the queue */
     sem_wait(&empty);
 
     /* Allocate memory for payload and copy to array */
     payload = (char*)malloc(sizeof(hostname));
     strcpy(payload, hostname);
 
-    
+    /* Acquire queue mutex lock so other requestors can't insert at same time 
+     * and resolvers can't try to read from the queue */
+    pthread_mutex_lock(&queueMutex);
 
-    /* There is room in the queue, so add new hostname to queue */
-    if(queue_push(&q, (void*)payload) == QUEUE_FAILURE)
-      fprintf(stderr, "Error: Queue push failed\n");
-    
-    printf("Posting full in requester \n");
-    sem_getvalue(&full, &value); 
-    printf("Full is %d\n", value);
-    sem_post(&full);
+    /* Add an item to the queue. If the queue is full and returns failure, sleep
+     * and try again after a random time */
+    while(queue_push(&q, (void*)payload) == QUEUE_FAILURE){
+      pthread_mutex_unlock(&queueMutex);
+      reqtime.tv_sec = 0;
+      reqtime.tv_nsec = rand() % 100;
+      nanosleep(&reqtime, NULL);
+      pthread_mutex_lock(&queueMutex);
+    }
 
-    /* Unlock queue for other requestors and resolvers to be able to read*/
+    /* Unlock queue and signal that there is something in the queue */
     pthread_mutex_unlock(&queueMutex);
-
-
+    sem_post(&full);
   }
   
   /* Done processing file, so requester thread will terminate. Make sure that no
@@ -110,12 +95,13 @@ void* resolver(){
     
   char* hostname;
   char firstipstr[INET6_ADDRSTRLEN];
-  int value;
 
   /* While there are still requesters running and there are still items in the
    * queue, try to read items from the queue and resolve the hostnames */
   while(1){
 
+
+    
     /* Check to see if queue is empty and that there are no more requesters
      * waiting to complete. Need to control access to the queue and the count
      * of running requesters to do this. If the queue is empty and no requesters
@@ -128,24 +114,20 @@ void* resolver(){
       break;
     }
 
-    /* Don't need access to the count of running requesters anymore */
+    /* Unlock mutexes in case this thread has to wait on full */
+    pthread_mutex_unlock(&queueMutex);
     pthread_mutex_unlock(&requesterMutex);
 
-    printf("Waiting on full in resolver\n");
-    sem_getvalue(&full, &value); 
-    printf("Full is %d\n", value);
+    /* Wait for there to be something in the queue */
     sem_wait(&full);
-    
+
     /* There is something in the queue, so read a name from the queue */
+    pthread_mutex_lock(&queueMutex);
     hostname = (char*)queue_pop(&q);
-
-    printf("Posting empty in resolver\n");
-    sem_getvalue(&empty, &value); 
-    printf("Empty is %d\n", value);
-    sem_post(&empty);
-
-    /* Don't need exclusive access to the queue anymore */
     pthread_mutex_unlock(&queueMutex);
+
+    /* Signal that there is room in the queue */
+    sem_post(&empty);
 
     /* Lookup hostname */
     if(dnslookup(hostname, firstipstr, sizeof(firstipstr)) == UTIL_FAILURE){
@@ -160,8 +142,6 @@ void* resolver(){
 
     /* Free memory used by hostname */
     free(hostname);
-
-    
   }
 
   return NULL;
