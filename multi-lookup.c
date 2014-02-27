@@ -15,19 +15,19 @@
 
 FILE* outputfp;             // Pointer to the output file
 queue q;                    // Queue to store hostnames in
-int runningRequesters = 0;  // Count of the number of running requestors threads
+int runningRequesters = 0;  // Count of the number of running requesters threads
 
 /* Mutexes to control access to shared resources */
-pthread_mutex_t queueMutex;
-pthread_mutex_t outputMutex;
-pthread_mutex_t requesterMutex;
+pthread_mutex_t queueMutex;     // Mutex for access to the queue
+pthread_mutex_t outputMutex;    // Mutex for access to the output file
+pthread_mutex_t requesterMutex; // Mutex for the running requesters thread count
 
 /* Semaphores to communicate between threads */
-sem_t full;
-sem_t empty;
+sem_t full;   // Semaphore to see if there is something in the queue
+sem_t empty;  // Semaphore to count the number of empty spaces in queue
 
 /*
- * Function for the requestor threads. Takes a pointer to a file as input, and 
+ * Function for the requester threads. Takes a pointer to a file as input, and 
  * goes through that file inserting hostnames into the queue. Waits for a 
  * random length of time if the queue is full.
  */
@@ -56,7 +56,7 @@ void* requester(void* fileName){
     payload = (char*)malloc(sizeof(hostname));
     strcpy(payload, hostname);
 
-    /* Acquire queue mutex lock so other requestors can't insert at same time 
+    /* Acquire queue mutex lock so other requesters can't insert at same time 
      * and resolvers can't try to read from the queue */
     pthread_mutex_lock(&queueMutex);
 
@@ -222,20 +222,31 @@ int main(int argc, char* argv[]){
   }
 
   /* Wait for requester and resolver threads to both finish */
-  for(i = 0; i < requesterThreadCount; i++)
-    pthread_join(requesterThreads[i], NULL);
-  for(i = 0; i < resolverThreadCount; i++)
-    pthread_join(resolverThreads[i], NULL);
+  for(i = 0; i < requesterThreadCount; i++){
+    if(pthread_join(requesterThreads[i], NULL)){
+      fprintf(stderr, "Error: Joining requester thread %d failed\n", i);
+    }
+  }
+  for(i = 0; i < resolverThreadCount; i++){
+    if(pthread_join(resolverThreads[i], NULL)){
+      fprintf(stderr, "Error: Joining resolver thread %d failed\n", i);
+    }
+  }
   
   /* Close Output File */
   fclose(outputfp);
 
   /* Cleanup */
-  pthread_mutex_destroy(&queueMutex);
-  pthread_mutex_destroy(&outputMutex);
-  pthread_mutex_destroy(&requesterMutex);
-  sem_destroy(&full);
-  sem_destroy(&empty);
+  if(pthread_mutex_destroy(&queueMutex))
+    fprintf(stderr, "Error: Destroying queueMutex failed\n");
+  if(pthread_mutex_destroy(&outputMutex))
+    fprintf(stderr, "Error: Destroying outputMutex failed\n");
+  if(pthread_mutex_destroy(&requesterMutex))
+    fprintf(stderr, "Error: Destroying requesterMutex failed\n");
+  if(sem_destroy(&full))
+    fprintf(stderr, "Error: Destroying full semaphore failed\n");
+  if(sem_destroy(&empty))
+    fprintf(stderr, "Error: Destroying empty semaphore failed\n");
   queue_cleanup(&q);
 
   return EXIT_SUCCESS;
