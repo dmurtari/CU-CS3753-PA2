@@ -23,6 +23,10 @@ pthread_mutex_t queueMutex;
 pthread_mutex_t outputMutex;
 pthread_mutex_t requesterMutex;
 
+/* Semaphores to communicate between threads */
+sem_t full;
+sem_t empty;
+
 /*
  * Function for the requestor threads. Takes a pointer to a file as input, and 
  * goes through that file inserting hostnames into the queue. Waits for a 
@@ -34,6 +38,7 @@ void* requester(void* fileName){
   char errorstr[SBUFSIZE];
   char hostname[MAX_NAME_LENGTH];
   char* payload;
+  int value;
   struct timespec reqtime;
   
   /* Open the input file for import */  
@@ -50,11 +55,8 @@ void* requester(void* fileName){
      * and resolvers can't try to read from the queue */
     pthread_mutex_lock(&queueMutex);
 
-    /* Allocate memory for payload and copy to array */
-    payload = (char*)malloc(sizeof(hostname));
-    strcpy(payload, hostname);
 
-    /* Sleep for a random length of time if queue is full */
+/* Sleep for a random length of time if queue is full */
     while(queue_is_full(&q)){
       pthread_mutex_unlock(&queueMutex);
       reqtime.tv_sec = 0;
@@ -62,13 +64,31 @@ void* requester(void* fileName){
       nanosleep(&reqtime, NULL);
       pthread_mutex_lock(&queueMutex);
     }
+    
+    printf("Waiting on empty in requester\n");
+    sem_getvalue(&empty, &value); 
+    printf("Empty is %d\n", value);
+    sem_wait(&empty);
+
+    /* Allocate memory for payload and copy to array */
+    payload = (char*)malloc(sizeof(hostname));
+    strcpy(payload, hostname);
+
+    
 
     /* There is room in the queue, so add new hostname to queue */
     if(queue_push(&q, (void*)payload) == QUEUE_FAILURE)
       fprintf(stderr, "Error: Queue push failed\n");
+    
+    printf("Posting full in requester \n");
+    sem_getvalue(&full, &value); 
+    printf("Full is %d\n", value);
+    sem_post(&full);
 
     /* Unlock queue for other requestors and resolvers to be able to read*/
     pthread_mutex_unlock(&queueMutex);
+
+
   }
   
   /* Done processing file, so requester thread will terminate. Make sure that no
@@ -90,6 +110,7 @@ void* resolver(){
     
   char* hostname;
   char firstipstr[INET6_ADDRSTRLEN];
+  int value;
 
   /* While there are still requesters running and there are still items in the
    * queue, try to read items from the queue and resolve the hostnames */
@@ -110,15 +131,18 @@ void* resolver(){
     /* Don't need access to the count of running requesters anymore */
     pthread_mutex_unlock(&requesterMutex);
 
-    /* If queue is empty, no need to try and look anything up so continue to the
-     * next iteration */
-    if(queue_is_empty(&q)){
-      pthread_mutex_unlock(&queueMutex);
-      continue;
-    }
+    printf("Waiting on full in resolver\n");
+    sem_getvalue(&full, &value); 
+    printf("Full is %d\n", value);
+    sem_wait(&full);
     
     /* There is something in the queue, so read a name from the queue */
     hostname = (char*)queue_pop(&q);
+
+    printf("Posting empty in resolver\n");
+    sem_getvalue(&empty, &value); 
+    printf("Empty is %d\n", value);
+    sem_post(&empty);
 
     /* Don't need exclusive access to the queue anymore */
     pthread_mutex_unlock(&queueMutex);
@@ -136,6 +160,8 @@ void* resolver(){
 
     /* Free memory used by hostname */
     free(hostname);
+
+    
   }
 
   return NULL;
@@ -148,7 +174,7 @@ int main(int argc, char* argv[]){
   /* Number of requester threads is number of input files */
   int requesterThreadCount = argc - 2;
   /* Number of resolver threads is the number of cores */
-  int resolverThreadCount = 10; //sysconf( _SC_NPROCESSORS_ONLN );
+  int resolverThreadCount = 2; //sysconf( _SC_NPROCESSORS_ONLN );
   /* Set number of running requesters to the numbers of input files */
   runningRequesters = requesterThreadCount;
   
@@ -189,6 +215,15 @@ int main(int argc, char* argv[]){
   if(pthread_mutex_init(&requesterMutex, NULL)){
     fprintf(stderr, "Error: requesterMutex initialization failed\n");
     return EXIT_FAILURE;
+  }
+
+  /* Initialize semaphores */
+  if(sem_init(&empty, 0, QUEUE_SIZE)){
+    fprintf(stderr, "Error: empty Semaphore initialization failed\n");
+    return EXIT_FAILURE;
+  }
+  if(sem_init(&full, 0, 0)){
+    fprintf(stderr, "Error: full Semaphore initialization failed\n");
   }
 
   /* Create thread pools */
