@@ -33,7 +33,7 @@ void* requester(void* fileName){
     
   inputfp = fopen(fileName, "r");
   if(!inputfp){
-    sprintf(errorstr, "Error Opening Input File: %s", fileName);
+    sprintf(errorstr, "Error Opening Input File: %p", fileName);
     perror(errorstr);
   }
 
