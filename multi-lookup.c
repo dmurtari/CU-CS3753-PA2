@@ -3,7 +3,7 @@
  * Author: Domenic Murtari
  * Project: CSCI 3753 Programming Assignment 2
  * Create Date: 2/23/2014
- * Modify Date: 2/25/2014
+ * Modify Date: 2/27/2014
  * Description: Contains a multi-thread implementation of the DNS Lookup system
  * 
  * References: 
@@ -14,15 +14,20 @@
 
 #include "multi-lookup.h"
 
-FILE* outputfp;
-queue q;
-int runningRequesters = 0;
+FILE* outputfp;             // Pointer to the output file
+queue q;                    // Queue to store hostnames in
+int runningRequesters = 0;  // Count of the number of running requestors threads
 
+/* Mutexes to control access to shared resources */
 pthread_mutex_t queueMutex;
 pthread_mutex_t outputMutex;
 pthread_mutex_t requesterMutex;
 
-
+/*
+ * Function for the requestor threads. Takes a pointer to a file as input, and 
+ * goes through that file inserting hostnames into the queue. Waits for a 
+ * random length of time if the queue is full.
+ */
 void* requester(void* fileName){
     
   FILE* inputfp;
@@ -30,15 +35,19 @@ void* requester(void* fileName){
   char hostname[MAX_NAME_LENGTH];
   char* payload;
   struct timespec reqtime;
-    
+  
+  /* Open the input file for import */  
   inputfp = fopen(fileName, "r");
   if(!inputfp){
     sprintf(errorstr, "Error Opening Input File: %p", fileName);
     perror(errorstr);
   }
 
+  /* Go through the input file, inserting hostnames into the queue */
   while(fscanf(inputfp, INPUTFS, hostname) > 0){
-    /* Acquire queue mutex lock*/
+    
+    /* Acquire queue mutex lock so other requestors can't insert at same time 
+     * and resolvers can't try to read from the queue */
     pthread_mutex_lock(&queueMutex);
 
     /* Allocate memory for payload and copy to array */
@@ -54,15 +63,16 @@ void* requester(void* fileName){
       pthread_mutex_lock(&queueMutex);
     }
 
-    /* Add new hostname to queue */
+    /* There is room in the queue, so add new hostname to queue */
     if(queue_push(&q, (void*)payload) == QUEUE_FAILURE)
       fprintf(stderr, "Error: Queue push failed\n");
 
-    /* Unlock queue */
+    /* Unlock queue for other requestors and resolvers to be able to read*/
     pthread_mutex_unlock(&queueMutex);
   }
   
-  /* Done processing file, so requester thread will terminate */
+  /* Done processing file, so requester thread will terminate. Make sure that no
+   * other requestors can access the counting variable at the same time */
   pthread_mutex_lock(&requesterMutex);
   runningRequesters--;
   pthread_mutex_unlock(&requesterMutex);
@@ -72,16 +82,23 @@ void* requester(void* fileName){
   return NULL;
 }   
     
-
+/*
+ * Function for the resolver threads. Reads from the queue that the requesters
+ * populate, looking up the hostname and writing the result to the output file.
+ */
 void* resolver(){
     
   char* hostname;
   char firstipstr[INET6_ADDRSTRLEN];
 
+  /* While there are still requesters running and there are still items in the
+   * queue, try to read items from the queue and resolve the hostnames */
   while(1){
 
     /* Check to see if queue is empty and that there are no more requesters
-       waiting to complete */
+     * waiting to complete. Need to control access to the queue and the count
+     * of running requesters to do this. If the queue is empty and no requesters
+     * are running, exit the while loop */
     pthread_mutex_lock(&queueMutex);
     pthread_mutex_lock(&requesterMutex);
     if(queue_is_empty(&q) && (runningRequesters == 0)){
@@ -90,20 +107,21 @@ void* resolver(){
       break;
     }
 
-    /* Done checking if requester is running */
+    /* Don't need access to the count of running requesters anymore */
     pthread_mutex_unlock(&requesterMutex);
 
-    /* If queue is empty, no need to try and look anything up so continue */
+    /* If queue is empty, no need to try and look anything up so continue to the
+     * next iteration */
     if(queue_is_empty(&q)){
       pthread_mutex_unlock(&queueMutex);
       continue;
     }
-
-    /* Don't need to check if queue is full */
-    pthread_mutex_unlock(&queueMutex);
     
-    /* Read a name from the queue */
+    /* There is something in the queue, so read a name from the queue */
     hostname = (char*)queue_pop(&q);
+
+    /* Don't need exclusive access to the queue anymore */
+    pthread_mutex_unlock(&queueMutex);
 
     /* Lookup hostname */
     if(dnslookup(hostname, firstipstr, sizeof(firstipstr)) == UTIL_FAILURE){
@@ -111,13 +129,9 @@ void* resolver(){
       strncpy(firstipstr, "", sizeof(firstipstr));
     }
 
-    /* Acquire mutex lock for output file */
+    /* Write result to the output file. Need exclusive access to output */
     pthread_mutex_lock(&outputMutex);
-
-    /* Write the hostname and ip to output file */
     fprintf(outputfp, "%s,%s\n", hostname, firstipstr);
-
-    /* Release output file mutex */
     pthread_mutex_unlock(&outputMutex);
 
     /* Free memory used by hostname */
@@ -181,7 +195,7 @@ int main(int argc, char* argv[]){
   pthread_t requesterThreads[requesterThreadCount];
   pthread_t resolverThreads[resolverThreadCount];
   
-  /* Create threads */
+  /* Populate thread pools with threads */
   for(i = 0; i < requesterThreadCount; i++){
     if(pthread_create(&requesterThreads[i], NULL, requester, argv[i + 1])){
       fprintf(stderr, "Error: Creating requester threads failed\n");
