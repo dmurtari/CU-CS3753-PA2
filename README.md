@@ -44,4 +44,6 @@ Benchmarking
 ------------
 On a CU-CS-VM running Ubuntu 12.04 64bit, 4 CPUs and 4GB of memory, the best
 performance seemed to be achieved with running 5 resolver threads. Data from
-the benchmarks can be seen in [`banchmarks.md`](benchmarks.md).
+the benchmarks can be seen in [`banchmarks.md`](benchmarks.md). Benchmarks were
+run with networking disabled to try and reduce variability of running time due
+to difference in network speeds. 

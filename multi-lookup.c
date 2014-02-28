@@ -155,6 +155,7 @@ int main(int argc, char* argv[]){
   /* Set number of running requesters to the numbers of input files */
   runningRequesters = requesterThreadCount;
 
+  /* Variables to keep track of execution time */
   struct timeval startTime;
   struct timeval endTime;
   long elapsedTime;
@@ -207,6 +208,7 @@ int main(int argc, char* argv[]){
     fprintf(stderr, "Error: full Semaphore initialization failed\n");
   }
 
+  /* Current time before threads are spawned */
   gettimeofday(&startTime, NULL);
 
   /* Create thread pools */
@@ -239,6 +241,7 @@ int main(int argc, char* argv[]){
     }
   }
   
+  /* Time after threads are joined */
   gettimeofday(&endTime, NULL);
 
   /* Close Output File */
@@ -257,6 +260,7 @@ int main(int argc, char* argv[]){
     fprintf(stderr, "Error: Destroying empty semaphore failed\n");
   queue_cleanup(&q);
 
+  /* Calculate the total elapsed and print the time (in microseconds) */
   elapsedTime = endTime.tv_usec - startTime.tv_usec;
   printf("Elapsed time was: %ld\n", elapsedTime);
 
