@@ -8,6 +8,10 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <unistd.h>
+<<<<<<< HEAD
+=======
+#include <sys/time.h>
+>>>>>>> 575174d751012770fc53a406e30f76c80daec1e1
 
 #include "util.h"
 #include "queue.h"
