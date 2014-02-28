@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <unistd.h>
+#include <sys/time.h>
 
 #include "util.h"
 #include "queue.h"

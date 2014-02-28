@@ -154,6 +154,10 @@ int main(int argc, char* argv[]){
   int resolverThreadCount = sysconf(_SC_NPROCESSORS_ONLN) * 2;
   /* Set number of running requesters to the numbers of input files */
   runningRequesters = requesterThreadCount;
+
+  struct timeval startTime;
+  struct timeval endTime;
+  long elapsedTime;
   
   
   /* Check Arguments */
@@ -203,6 +207,8 @@ int main(int argc, char* argv[]){
     fprintf(stderr, "Error: full Semaphore initialization failed\n");
   }
 
+  gettimeofday(&startTime, NULL);
+
   /* Create thread pools */
   pthread_t requesterThreads[requesterThreadCount];
   pthread_t resolverThreads[resolverThreadCount];
@@ -233,6 +239,8 @@ int main(int argc, char* argv[]){
     }
   }
   
+  gettimeofday(&endTime, NULL);
+
   /* Close Output File */
   fclose(outputfp);
 
@@ -248,6 +256,9 @@ int main(int argc, char* argv[]){
   if(sem_destroy(&empty))
     fprintf(stderr, "Error: Destroying empty semaphore failed\n");
   queue_cleanup(&q);
+
+  elapsedTime = endTime.tv_usec - startTime.tv_usec;
+  printf("Elapsed time was: %ld\n", elapsedTime);
 
   return EXIT_SUCCESS;
 }
